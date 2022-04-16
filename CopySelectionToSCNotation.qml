@@ -38,27 +38,27 @@ MuseScore {
     // Invisible Text Edit Object to Access System Clipboard
     // https://stackoverflow.com/questions/59806339/qml-listview-how-to-copy-selected-item-to-clipboard/59806775#59806775
     TextEdit{
-        id: output_text
+        id: sc_output;
         visible: false
     }
 
-    /*  This script will get the notes and their durations from either the current selection
-     translate them into Supercollider pattern notation, and copy the values to the clipboard.
-     The scope includes *only* notes and rests and not the tempo of the song.
-
-     NB: Grace notes are not included for this iteration of the script.
-
-     Output is broken out by MuseScore instrument ID and voice. Pdefs may allow for chords, and multiple voices,
-     but for any sort of real, human comprehension of what's happening inside of a Pattern, breaking it into multiple
-     voices is best for readability. This may change in the future, but for now, we are including the voice number, as
-     well as the instrument ID as the unique identifier for the voice map.
+    /*  This script will get the notes and their durations from the current selection
+     *  translate them into Supercollider pattern notation, and copy the values to the clipboard.
+     *  The scope includes *only* notes and rests.
+     *
+     *  NB: Grace notes are not included for this iteration of the script.
+     *
+     *  Output is broken out by MuseScore instrument ID and voice. Pdefs may allow for chords, and multiple voices,
+     *  but for any sort of real, human comprehension of what's happening inside of a Pattern, breaking it into multiple
+     *  voices is best for readability. This may change in the future, but for now, we are including the voice number, as
+     *  well as the instrument ID as the unique identifier for the voice map.
      */
 
     onRun: {
 
         var instrumentMap = {}
 
-        // Currently only will output what's in the current selection. TODO: apply to the entire score.
+        // TODO: apply to the entire score.
 
         var currentSelection = []
         var cursor = curScore.newCursor();
@@ -67,25 +67,19 @@ MuseScore {
         for (var i in curScore.selection.elements) {
 
             if (curScore.selection.elements[i].type == Element.NOTE) {
-                var note = curScore.selection.elements[i]
+
+                var note = curScore.selection.elements[i];
                 var segment = note.parent;
-                var segmentStart;
                 var instrumentName = camelize(segment.staff.part.longName);
                 var instrumentTrack = segment.staff.part.startTrack / 4;
                 var instrumentVoice = getVoice(note, cursor, segment.parent.tick);
                 var instrumentStaff = getStaff(note, cursor, instrumentTrack, segment.parent.tick);
                 var uniqueInstrumentIdentifier = instrumentName + "_" + instrumentTrack + "_" + instrumentVoice + "_" + instrumentStaff;
+
+                // Common Methods to be added for later use
+                var segmentStart;
                 var durationTicks;
                 var durationString;
-
-                print(uniqueInstrumentIdentifier);
-
-                //print("Name: ", instrumentName, segment.staff.part.startTrack, segment.staff.part.endTrack);
-
-                //print("Found Note", uniqueInstrumentIdentifier, note.staff.part, segment.parent.tick, note.pitch, note.tpc1, note.tieBack, note.tieForward,
-                //segment.staff.part.partName, segment.staff.part.instrumentId, segment.staff.part.longName,
-                //segment.duration.str, segment.duration.ticks,"(", segment.duration.numerator,"/",segment.duration.denominator, ")")
-
 
                 // If the note has a tieForward and does not have a tieBack, that means it's the first note in a tied sequence. I am making the decision that
                 // even if the note is in a tied sequence and the entire tied sequence is not selected, then the length of the tied sequence will be applied to
@@ -100,17 +94,12 @@ MuseScore {
                     var lastNoteSegmentEnd = lastNoteSegmentStart + lastNoteSegmentLength;
                     var tiedNoteDuration = lastNoteSegmentEnd - segmentStart;
                     var durationDenominator = segment.duration.denominator;
-                    print("DURATION DENOMINATOR: ", durationDenominator);
-                    print("COUNT OF DENOMINATOR: ", tiedNoteDuration/durationMap[durationDenominator]);
 
                     // If we have a tied note, we want to have a representation like 3/8 instead of 1.5/4
+                    // This will continue to increase the denominator until both numbers are whole.
                     while(tiedNoteDuration % durationMap[durationDenominator] > 0) {
-                        print(tiedNoteDuration, durationMap[durationDenominator], tiedNoteDuration % durationMap[durationDenominator], durationDenominator);
-                        durationDenominator = durationDenominator*2;
+                        durationDenominator = durationDenominator * 2;
                     }
-
-                    print("DURATION DENOMINATOR: ", durationDenominator);
-                    print("COUNT OF DENOMINATOR: ", tiedNoteDuration/durationMap[durationDenominator]);
 
                     var numerator = tiedNoteDuration/durationMap[durationDenominator];
                     var denominator = durationDenominator;
@@ -138,13 +127,12 @@ MuseScore {
                     startTick = segmentStart;
                 }
 
-                print("SEGMENT START: ", segmentStart);
-
                 // Add Note Information To Maps At Tick to ensure ordering when generating output.
                 // Unclear if ordering will ever be non-deterministic when accessing the API
 
                 // Concert Pitch - Midi Notes are in Concert Pitch Regardless of Status
                 tickMap[_NOTES].push(note.pitch)
+
                 // Duration in ticks, used to find the smallest duration to determine when the next element should play
                 if (tickMap[_DURATION_TICKS][0] == undefined) {
                     tickMap[_DURATION_TICKS].push(durationTicks)
@@ -154,13 +142,7 @@ MuseScore {
                     tickMap[_DURATION_STRING].push(durationString)
                 }
 
-                print(tickMap[_NOTES]);
-                print(instrumentMap[uniqueInstrumentIdentifier][segmentStart][_NOTES]);
-                print(instrumentMap[uniqueInstrumentIdentifier][segmentStart][_DURATION_TICKS]);
-                print(instrumentMap[uniqueInstrumentIdentifier][segmentStart][_DURATION_STRING]);
-
             } else if (curScore.selection.elements[i].type == Element.REST) {
-                print(curScore.selection.elements[i])
                 var rest = curScore.selection.elements[i];
                 var segment = rest.parent
                 var instrumentName = camelize(rest.staff.part.longName);
@@ -168,11 +150,6 @@ MuseScore {
                 var instrumentVoice = getVoice(rest, cursor, segment.tick);
                 var instrumentStaff = getStaff(rest, cursor, instrumentTrack, segment.tick);
                 var uniqueInstrumentIdentifier = instrumentName + "_" + instrumentTrack + "_" + instrumentVoice + "_" + instrumentStaff;
-
-                print(uniqueInstrumentIdentifier);
-
-                print("Found Rest", segment.tick, rest.part, rest.duration.str, rest.duration.ticks,
-                "(", rest.duration.numerator,"/",rest.duration.denominator, ")")
 
                 // When we get to creating the pdefs, we need to know where to put the phase for each pattern.
                 // Phase is an offset of the start, so we need to know where the start is.
@@ -198,26 +175,26 @@ MuseScore {
                 }
 
             } else {
-                //print(curScore.selection.elements[i].type)
+                // UNHANDLED TYPE
             }
         }
 
         // Now that we've got the information in for each instrument, let's print it out into a
         // form that's digestible by SuperCollider.
 
-        print("START TIME: ", startTick);
-
         // Get Time Signature so we know what the phase is. We will use the offset from the first
         // measure, making the assumption that the time signature will remain consistent. This is
         // *not* something that's particularly useful for more complex music and will be a TODO
         // once I understand complex meter in Supercollider.
+        //
+        // NB: This is currently unused as it looks like all of the selection is properly phased,
+        // but I don't trust it.
         cursor.rewindToTick(startTick);
         var timeSignature = cursor.measure.timesigActual;
         var timeSignatureBeatTicks = durationMap[timeSignature.denominator];
 
-        print("TIME SIGNATURE: ", timeSignature.denominator);
-        var sc_output = "(\n";
-
+        // Output Holder
+        sc_output.text = "(\n";
 
         for (var instrument in instrumentMap) {
             var note_output_value="~" + instrument + "_notes = [";
@@ -229,57 +206,30 @@ MuseScore {
             var sortedMapKeys = sortMapKeys(instrumentMap[instrument]);
             var instrumentStartTick = sortedMapKeys[0];
 
-            print("START TIMES: ", instrumentStartTick, startTick);
-
-            for (var i in sortedMapKeys ) {
-                print(i);
+            // Add note and rest details order by tick
+            for (var i in sortedMapKeys) {
                 var tick = sortedMapKeys[i];
-                //print("\t", "FOO");
-                print("\t", tick);
                 tickMap = instrumentMap[instrument][tick];
-                print("\t   ", tickMap[_NOTES], tickMap[_DURATION_TICKS], tickMap[_DURATION_STRING]);
                 note_output_value=note_output_value + tickMap[_NOTES] + ",";
                 duration_output_value=duration_output_value + tickMap[_DURATION_STRING] + ",";
             }
-            // Remove last comma and add suffix
+
+            // Remove last comma
             note_output_value=note_output_value.slice(0, -1) + "]"
             duration_output_value=duration_output_value.slice(0, -1) + "]"
-            sc_output = sc_output + note_output_value + ";\n";
-            sc_output = sc_output + duration_output_value + ";\n";
-            sc_output = sc_output + phase_output_value + ";\n";
+
+            // Add to formatted output
+            sc_output.text = sc_output.text + note_output_value + ";\n";
+            sc_output.text = sc_output.text + duration_output_value + ";\n";
+            sc_output.text = sc_output.text + phase_output_value + ";\n";
         }
 
-        sc_output = sc_output +");";
+        sc_output.text = sc_output.text +");";
 
-        output_text.text = sc_output;
-        output_text.selectAll();
-        output_text.copy();
+        // Copy to system clipboard
+        sc_output.selectAll();
+        sc_output.copy();
 
-        print(sc_output);
-
-
-
-        // Calculate the duration of each step
-
-        // For each step, dur is going to be the value of the shortest element in the current step, as "dur" is the
-        // length we wait until the next step. (Supercollider notation is meant for machines, not people.)
-
-        // We should be able to regenerate the score passed from MuseScore from the flucoma script and see the pattern
-        // shaped exactly.
-
-        // For the duration (either whole piece or selection):
-        // For Each Instrument
-        //      For Each Clef
-        //      For Each Step
-        //              Calculate the shortest note duration in the step
-        //      For Each Note
-        //              Calculate Note Value
-        //              Calculate Note Sustain
-        //              Add Values to String
-
-        // Copy Generated Strings to Clipboard
-
-        //console.log("hello world")
         Qt.quit()
     }
 
@@ -287,36 +237,28 @@ MuseScore {
 
     function addInstrumentDetails(tick,instrumentMap) {
         if (instrumentMap[tick] == undefined) {
-
             // Create Associative Map of Details
-            var instrumentDetails = {}
-            instrumentDetails[_NOTES] = []
-            instrumentDetails[_DURATION_TICKS] = []
-            instrumentDetails[_DURATION_STRING] = []
-            instrumentMap[tick] = instrumentDetails
-
+            var instrumentDetails = {};
+            instrumentDetails[_NOTES] = [];
+            instrumentDetails[_DURATION_TICKS] = [];
+            instrumentDetails[_DURATION_STRING] = [];
+            instrumentMap[tick] = instrumentDetails;
         }
     }
 
     function addIfNotExists(map, key) {
         if (map[key] == undefined) {
-            map[key] = {}
+            map[key] = {};
         }
     }
 
     function getVoice(element, cursor, tick) {
-        // This is either a NOTE or a REST.
-        // The parent of a NOTE or REST's parent is a segment,
-        // and that segment contains the tick the element is on.
         cursor.track = element.track;
         cursor.rewindToTick(tick);
         return cursor.voice;
     }
 
     function getStaff(element, cursor, instrumentTrack, tick) {
-        // This is either a NOTE or a REST.
-        // The parent of a NOTE or REST's parent is a segment,
-        // and that segment contains the tick the element is on.
         cursor.track = element.track;
         cursor.rewindToTick(tick);
         return cursor.staffIdx - instrumentTrack;
@@ -344,28 +286,21 @@ MuseScore {
             return "1";
         }
 
-
         var a = numerator;
         var b = denominator;
         var tmp;
 
-        print("gcd(",numerator,denominator,")");
-
         while(a % b > 0) {
-            print("gcd(",a,b,")");
             tmp = b;
             b = a % b;
             a = tmp;
-
         }
-        print("GCD =", b, " Simplified: ", numerator/b, "/" , denominator/b);
 
         if (denominator/b == 1) {
             return numerator/b;
         } else {
             return (numerator/b +  "/" + denominator/b);
         }
-
     }
 
     // From: https://stackoverflow.com/questions/1069666/sorting-object-property-by-values
@@ -381,6 +316,8 @@ MuseScore {
     }
 
     // From: https://stackoverflow.com/questions/2970525/converting-any-string-into-camel-case
+    // We need to make sure the instrument names are in camelCase so they meet the critera for
+    // supercollider variable names.
     function camelize(str) {
         return str.toLowerCase().replace(/[^a-zA-Z0-9]+(.)/g, (m, chr) => chr.toUpperCase());
     }
